@@ -1,0 +1,21 @@
+# Claves y credenciales (NUNCA subir)
+.env
+.env_copy
+.env.*
+radar-productos-*.json
+service_account.json
+vision_credentials.json
+*credentials*.json
+
+# Datos locales
+guardados.json
+
+# Secrets de Streamlit
+.streamlit/secrets.toml
+
+# Basura de Python / entorno
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/

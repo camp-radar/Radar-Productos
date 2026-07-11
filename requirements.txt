@@ -1,0 +1,8 @@
+streamlit
+google-generativeai
+python-dotenv
+requests
+Pillow
+numpy
+certifi
+google-auth
