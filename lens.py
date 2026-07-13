@@ -193,8 +193,12 @@ def _resumen_precios(items: list) -> dict:
 def filtrar_por_similitud_gemini(image_bytes: bytes, productos: list) -> list:
     """
     Usa Gemini para comparar la foto original con los TÍTULOS de los candidatos
-    de Lens, y devuelve la MISMA lista reordenada de más a menos parecido.
-    Nunca descarta candidatos, solo cambia su orden.
+    de Lens, y devuelve la MISMA lista reordenada: primero los candidatos
+    idénticos/muy similares al producto de la foto (de más a menos parecido),
+    después el resto (también de más a menos parecido). Nunca descarta
+    candidatos, solo cambia su orden — se debe llamar con TODOS los candidatos
+    (antes de aplicar max_resultados), para que un idéntico que Lens dejó en
+    una posición baja no quede fuera del corte final.
 
     Si no hay GEMINI_API_KEY, hay menos de 2 candidatos, o Gemini falla por
     cualquier motivo, devuelve la lista ORIGINAL sin cambios: este filtro nunca
@@ -214,12 +218,16 @@ def filtrar_por_similitud_gemini(image_bytes: bytes, productos: list) -> list:
 A continuación hay una lista de candidatos encontrados en tiendas (solo se conoce su título e índice, no su imagen):
 {lista_titulos}
 
-Tu tarea: comparar lo que se ve en la foto de referencia con cada título y ordenar TODOS los candidatos de más a menos parecido al producto de la foto (misma marca, modelo y generación primero; variantes, accesorios u otras categorías al final). Debes incluir todos los índices, sin excluir ninguno.
+Tu tarea tiene dos partes:
+1. Identificar cuáles candidatos son EL MISMO producto que el de la foto (idénticos o muy similares: misma marca, modelo y generación), y cuáles son otra cosa (otro modelo, otra generación, variante distinta, accesorio, u otra categoría).
+2. Ordenar cada uno de esos dos grupos de más a menos parecido.
+
+Debes incluir TODOS los índices, sin excluir ninguno: cada índice va en "identicos" o en "resto", nunca se descarta.
 
 Responde SOLO con JSON válido, sin markdown, con esta estructura exacta:
-{{"orden": [TODOS los índices ordenados de MÁS parecido a MENOS parecido]}}
+{{"identicos": [índices que son el mismo producto, de más a menos parecido], "resto": [los demás índices, de más a menos parecido]}}
 
-Ejemplo: {{"orden": [2, 0, 1, 3]}}"""
+Ejemplo: {{"identicos": [2, 0], "resto": [1, 3]}}"""
 
     try:
         img = Image.open(BytesIO(image_bytes)).convert("RGB")
@@ -227,18 +235,22 @@ Ejemplo: {{"orden": [2, 0, 1, 3]}}"""
         data = extraer_json_respuesta(respuesta)
         if not data or not isinstance(data, dict):
             return productos
-        orden = data.get("orden")
-        if not isinstance(orden, list) or not orden:
+        identicos = data.get("identicos")
+        resto = data.get("resto")
+        if not isinstance(identicos, list) or not isinstance(resto, list):
+            return productos
+        if not identicos and not resto:
             return productos
 
-        reordenados = [productos[i] for i in orden
+        orden_final = identicos + resto
+        reordenados = [productos[i] for i in orden_final
                        if isinstance(i, int) and 0 <= i < len(productos)]
         if not reordenados:
             return productos
 
-        # Candidatos que Gemini no mencionó en "orden": se agregan al final
-        # (nunca se descartan) por si el JSON viene incompleto.
-        mencionados = set(orden)
+        # Candidatos que Gemini no mencionó en ninguno de los dos grupos: se
+        # agregan al final (nunca se descartan) por si el JSON viene incompleto.
+        mencionados = set(orden_final)
         faltantes = [p for i, p in enumerate(productos) if i not in mencionados]
         return reordenados + faltantes
     except Exception:
