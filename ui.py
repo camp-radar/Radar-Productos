@@ -8,15 +8,19 @@ from busqueda import generar_link_tienda
 from guardados import cargar_guardados, guardar_producto
 
 
-def _card_producto_html(item):
-    """Genera el HTML de una tarjeta de producto."""
+def _card_producto_html(item, link_directo=False):
+    """Genera el HTML de una tarjeta de producto.
+
+    Si link_directo=True, usa item["link"] tal cual (para resultados de Lens,
+    que ya apuntan a la página exacta del producto) en vez de generar_link_tienda.
+    """
     link = item.get("link", "")
     imagen = item.get("imagen", "")
     tienda = item.get("fuente", "")
     titulo_full = item.get("titulo", "-")
     titulo = resumir_texto(titulo_full, 70)
     precio = formatear_pesos(item.get("precio"))
-    link_tienda = generar_link_tienda(titulo_full, tienda) if tienda else link
+    link_tienda = link if link_directo else (generar_link_tienda(titulo_full, tienda) if tienda else link)
     img_html = (f'<div class="ml-card-img"><img src="{imagen}" loading="lazy"/></div>'
                 if imagen else '<div class="ml-card-img">🛍️</div>')
     tienda_html = f'<div class="ml-card-store">{_esc(tienda)}</div>' if tienda else ""
@@ -34,7 +38,7 @@ def _card_producto_html(item):
         </div>"""
 
 
-def _render_fila_productos(items, key_prefix):
+def _render_fila_productos(items, key_prefix, link_directo=False):
     """Renderiza productos en una fila de 5 columnas, cada uno con botón Guardar."""
     guardados = cargar_guardados()
     claves_guardadas = {(g.get("link", ""), g.get("precio")) for g in guardados}
@@ -45,7 +49,7 @@ def _render_fila_productos(items, key_prefix):
         cols = st.columns(por_fila, gap="small")
         for idx, item in enumerate(fila):
             with cols[idx]:
-                st.markdown(_card_producto_html(item), unsafe_allow_html=True)
+                st.markdown(_card_producto_html(item, link_directo=link_directo), unsafe_allow_html=True)
                 clave = (item.get("link", ""), item.get("precio"))
                 item_idx = inicio + idx
                 if clave in claves_guardadas:
@@ -68,6 +72,42 @@ def render_grid_ml(items, resultado=None):
     st.markdown('<div class="grid-title">🛒 Mejores precios encontrados</div>',
                 unsafe_allow_html=True)
     _render_fila_productos(top[:5], "top")
+
+
+def render_producto_exacto(resultado_lens):
+    """Muestra el producto EXACTO encontrado vía Google Lens (módulo lens.py).
+
+    No dibuja nada si la búsqueda falló o no trajo productos, para que el
+    flujo de "productos similares" siga viéndose normal.
+    """
+    if not resultado_lens or not resultado_lens.get("ok") or not resultado_lens.get("productos"):
+        return
+
+    items = [{
+        "titulo": p.get("titulo", ""),
+        "fuente": p.get("tienda", ""),
+        "precio": p.get("precio_num"),
+        "imagen": p.get("imagen", ""),
+        "link": p.get("link", ""),
+    } for p in resultado_lens.get("productos", [])]
+
+    st.markdown('<div class="grid-title">🎯 Producto exacto encontrado en tiendas chilenas</div>',
+                unsafe_allow_html=True)
+
+    resumen = resultado_lens.get("resumen_precios") or {}
+    if resumen:
+        st.markdown(f"""
+<div class="camp-block camp-value" style="padding:0.8rem 1.1rem;margin-bottom:0.9rem;">
+<div class="camp-text">
+<b>Mínimo:</b> {formatear_pesos(resumen.get('min'))} &nbsp;·&nbsp;
+<b>Mediana:</b> {formatear_pesos(resumen.get('mediana'))} &nbsp;·&nbsp;
+<b>Máximo:</b> {formatear_pesos(resumen.get('max'))}
+&nbsp;<span style="color:#94a3b8;">({resumen.get('cantidad', 0)} resultados)</span>
+</div>
+</div>
+""", unsafe_allow_html=True)
+
+    _render_fila_productos(items, "lens", link_directo=True)
 
 
 def render_identidad(det):

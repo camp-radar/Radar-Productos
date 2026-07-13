@@ -15,10 +15,11 @@ from guardados import (cargar_guardados, _escribir_guardados, eliminar_guardado,
 from busqueda import buscar_producto
 from vision import (image_input_pipeline, detectar_identidad_imagen,
                     verificar_y_enriquecer)
+import lens
 from logistica import estimar_envio
 from campanas import generar_campana, _regiones_seleccionadas_a_texto
 from ui import (_card_producto_html, render_grid_ml, render_identidad, _esc,
-                _render_campana)
+                _render_campana, render_producto_exacto)
 
 
 st.set_page_config(
@@ -73,6 +74,7 @@ _DEFAULTS = {
     "radar_deteccion": None,
     "radar_hash_img": None,
     "radar_modulo4": None,
+    "radar_lens": None,
 }
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
@@ -390,6 +392,7 @@ if seccion == "radar":
     if buscar and query and len(query.strip()) >= 3:
         st.session_state["radar_deteccion"] = None
         st.session_state["radar_modulo4"] = None
+        st.session_state["radar_lens"] = None
         with st.spinner("Buscando precios en el mercado..."):
             resultado = buscar_producto(query.strip(), contexto={}, max_resultados=5)
         st.session_state["radar_resultado"] = resultado
@@ -402,9 +405,18 @@ if seccion == "radar":
         if img_hash != st.session_state.get("radar_hash_img"):
             st.session_state["radar_hash_img"] = img_hash
             st.session_state["radar_resultado"] = None
+            st.session_state["radar_lens"] = None
             with st.spinner("Detectando producto y buscando precios..."):
                 pipeline = image_input_pipeline(imagen_subida)
                 if pipeline["ok"]:
+                    try:
+                        with st.spinner("Buscando el producto exacto en tiendas chilenas..."):
+                            resultado_lens = lens.buscar_por_imagen_lens(
+                                pipeline["image_bytes_clean"])
+                        st.session_state["radar_lens"] = resultado_lens
+                    except Exception:
+                        st.session_state["radar_lens"] = None
+
                     det = detectar_identidad_imagen(pipeline["image_bytes_clean"], pipeline["image_clean"])
                     if "error" not in det:
                         st.session_state["radar_deteccion"] = det
@@ -458,6 +470,7 @@ if seccion == "radar":
     if det or resultado:
         if det:
             render_identidad(det)
+        render_producto_exacto(st.session_state.get("radar_lens"))
         if resultado:
             render_grid_ml(resultado.get("top", []), resultado)
 
