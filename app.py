@@ -489,8 +489,18 @@ if seccion == "radar":
     if det or resultado:
         if det:
             render_identidad(det)
-        render_producto_exacto(st.session_state.get("radar_lens"))
-        if resultado:
+        resultado_lens = st.session_state.get("radar_lens")
+        render_producto_exacto(resultado_lens)
+
+        # "det" solo se setea en la búsqueda por imagen (la búsqueda por texto
+        # lo resetea a None): usamos eso para ocultar "Mejores precios
+        # encontrados" únicamente cuando Lens ya trajo el producto exacto en
+        # una búsqueda por imagen. La búsqueda por texto siempre la muestra.
+        es_busqueda_imagen = bool(det)
+        lens_tiene_productos = bool(
+            resultado_lens and resultado_lens.get("ok") and resultado_lens.get("productos"))
+
+        if resultado and not (es_busqueda_imagen and lens_tiene_productos):
             render_grid_ml(resultado.get("top", []), resultado)
 
 # ==============================================================================
