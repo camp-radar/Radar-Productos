@@ -10,6 +10,7 @@ import hashlib
 import streamlit as st
 
 from config import ZONAS_CHILE, OBJETIVOS_META
+from utils import formatear_pesos
 from guardados import (cargar_guardados, _escribir_guardados, eliminar_guardado,
                        guardar_producto, selector_guardado)
 from busqueda import buscar_producto
@@ -499,6 +500,54 @@ if seccion == "radar":
         es_busqueda_imagen = bool(det)
         lens_tiene_productos = bool(
             resultado_lens and resultado_lens.get("ok") and resultado_lens.get("productos"))
+
+        # --- Calculadora de rentabilidad (solo si Lens trajo producto exacto) ---
+        if lens_tiene_productos:
+            productos_lens = resultado_lens.get("productos", [])
+            con_precio = [p for p in productos_lens if p.get("precio_num")]
+            with st.expander("🧮 Calculadora de rentabilidad", expanded=False):
+                if not con_precio:
+                    st.info("No hay precios disponibles en los resultados de Lens para comparar.")
+                else:
+                    opciones = {
+                        f"{p.get('tienda') or 'Tienda'} — {formatear_pesos(p['precio_num'])}": p["precio_num"]
+                        for p in con_precio
+                    }
+                    etiqueta_sel = st.selectbox("Precio de referencia (precio de mercado)",
+                                               list(opciones.keys()), key="calc_precio_ref")
+                    precio_referencia = opciones[etiqueta_sel]
+
+                    cc1, cc2 = st.columns(2, gap="medium")
+                    with cc1:
+                        precio_compra = st.number_input("Precio de compra (proveedor)",
+                                                        min_value=0.0, value=0.0, step=100.0,
+                                                        key="calc_precio_compra")
+                        iva = st.number_input("IVA %", min_value=0.0, value=19.0, step=0.5,
+                                             key="calc_iva")
+                    with cc2:
+                        margen = st.number_input("Margen de ganancia %", min_value=0.0, value=20.0,
+                                                 step=1.0, key="calc_margen")
+                        costo_envio = st.number_input("Costo de envío (opcional)", min_value=0.0,
+                                                      value=0.0, step=100.0, key="calc_envio")
+
+                    costo_base = precio_compra + (precio_compra * iva / 100) + costo_envio
+                    precio_sugerido = costo_base + (costo_base * margen / 100)
+                    ganancia_pesos = precio_sugerido - costo_base
+
+                    mc1, mc2 = st.columns(2, gap="medium")
+                    with mc1:
+                        st.metric("Precio de venta sugerido", formatear_pesos(precio_sugerido))
+                    with mc2:
+                        st.metric("Ganancia por unidad", formatear_pesos(ganancia_pesos),
+                                 delta=f"{margen:.1f}% margen")
+
+                    if precio_sugerido <= precio_referencia:
+                        st.success(f"✅ Tu precio sugerido ({formatear_pesos(precio_sugerido)}) está "
+                                  f"por DEBAJO del mercado ({formatear_pesos(precio_referencia)}). Competitivo.")
+                    else:
+                        st.warning(f"⚠️ Tu precio sugerido ({formatear_pesos(precio_sugerido)}) está "
+                                  f"por ENCIMA del mercado ({formatear_pesos(precio_referencia)}). "
+                                  f"Podrías tener que bajar el margen para competir.")
 
         if resultado and not (es_busqueda_imagen and lens_tiene_productos):
             render_grid_ml(resultado.get("top", []), resultado)

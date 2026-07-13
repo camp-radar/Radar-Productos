@@ -84,20 +84,21 @@ def _render_fila_productos_lens(items, key_prefix):
                 clave = (item.get("link", ""), item.get("precio"))
                 item_idx = inicio + idx
 
-                col_guardar, col_buscar, _col_relleno = st.columns([1, 1, 4], gap="small")
+                col_guardar, col_buscar = st.columns(2, gap="small")
                 with col_guardar:
                     if clave in claves_guardadas:
                         st.button("✓", key=f"{key_prefix}_g_{item_idx}", disabled=True,
-                                  help="Ya guardado")
+                                  help="Ya guardado", use_container_width=True)
                     else:
-                        if st.button("💾", key=f"{key_prefix}_s_{item_idx}", help="Guardar producto"):
+                        if st.button("💾", key=f"{key_prefix}_s_{item_idx}", help="Guardar producto",
+                                     use_container_width=True):
                             if guardar_producto(item):
                                 st.toast("Producto guardado ✓")
                                 st.rerun()
                 with col_buscar:
                     if item.get("imagen"):
                         if st.button("🔍", key=f"{key_prefix}_img_{item_idx}",
-                                     help="Buscar con esta imagen"):
+                                     help="Buscar con esta imagen", use_container_width=True):
                             try:
                                 img_pil = descargar_imagen(item["imagen"])
                                 if img_pil is None:
