@@ -83,29 +83,31 @@ def _render_fila_productos_lens(items, key_prefix):
                 st.markdown(_card_producto_html(item, link_directo=True), unsafe_allow_html=True)
                 clave = (item.get("link", ""), item.get("precio"))
                 item_idx = inicio + idx
-                if clave in claves_guardadas:
-                    st.button("✓ Guardado", key=f"{key_prefix}_g_{item_idx}",
-                              disabled=True, use_container_width=True)
-                else:
-                    if st.button("💾 Guardar", key=f"{key_prefix}_s_{item_idx}",
-                                 use_container_width=True):
-                        if guardar_producto(item):
-                            st.toast("Producto guardado ✓")
-                            st.rerun()
 
-                if item.get("imagen"):
-                    if st.button("🔍 Buscar con esta imagen", key=f"{key_prefix}_img_{item_idx}",
-                                 use_container_width=True):
-                        try:
-                            img_pil = descargar_imagen(item["imagen"])
-                            if img_pil is None:
-                                raise RuntimeError("no se pudo descargar la imagen del candidato.")
-                            buf = BytesIO()
-                            img_pil.save(buf, format="JPEG", quality=90)
-                            st.session_state["imagen_referente_bytes"] = buf.getvalue()
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"No se pudo usar esta imagen para buscar: {e}")
+                col_guardar, col_buscar, _col_relleno = st.columns([1, 1, 4], gap="small")
+                with col_guardar:
+                    if clave in claves_guardadas:
+                        st.button("✓", key=f"{key_prefix}_g_{item_idx}", disabled=True,
+                                  help="Ya guardado")
+                    else:
+                        if st.button("💾", key=f"{key_prefix}_s_{item_idx}", help="Guardar producto"):
+                            if guardar_producto(item):
+                                st.toast("Producto guardado ✓")
+                                st.rerun()
+                with col_buscar:
+                    if item.get("imagen"):
+                        if st.button("🔍", key=f"{key_prefix}_img_{item_idx}",
+                                     help="Buscar con esta imagen"):
+                            try:
+                                img_pil = descargar_imagen(item["imagen"])
+                                if img_pil is None:
+                                    raise RuntimeError("no se pudo descargar la imagen del candidato.")
+                                buf = BytesIO()
+                                img_pil.save(buf, format="JPEG", quality=90)
+                                st.session_state["imagen_referente_bytes"] = buf.getvalue()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"No se pudo usar esta imagen para buscar: {e}")
 
 
 def render_grid_ml(items, resultado=None):
