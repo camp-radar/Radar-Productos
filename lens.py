@@ -14,15 +14,20 @@ Entrada principal:
 
 import re
 import base64
+from io import BytesIO
 from urllib.parse import urlparse
 
 import requests
+from PIL import Image
+
+from ia import _gemini_generate
+from utils import extraer_json_respuesta
 
 # Llaves: se toman de config (que funciona en local vía .env y en la nube vía
 # Streamlit Secrets). Fallback a variables de entorno por si config aún no las
 # expone, para no romper pruebas locales.
 try:
-    from config import SERPAPI_KEY, IMGBB_API_KEY
+    from config import SERPAPI_KEY, IMGBB_API_KEY, GEMINI_API_KEY
 except Exception:
     import os
     try:
@@ -32,6 +37,13 @@ except Exception:
         pass
     SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
     IMGBB_API_KEY = os.getenv("IMGBB_API_KEY", "")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
+
+# Interruptor del filtro de similitud con Gemini: en False, buscar_por_imagen_lens
+# funciona exactamente igual que antes (solo orden por precio). Poner en False
+# para revertir rápido si el filtro da problemas.
+USAR_FILTRO_GEMINI = True
 
 
 # ==============================================================================
@@ -175,6 +187,65 @@ def _resumen_precios(items: list) -> dict:
 
 
 # ==============================================================================
+# FILTRO OPCIONAL DE SIMILITUD (Gemini compara la foto vs. los títulos)
+# ==============================================================================
+
+def filtrar_por_similitud_gemini(image_bytes: bytes, productos: list) -> list:
+    """
+    Usa Gemini para comparar la foto original con los TÍTULOS de los candidatos
+    de Lens, y devuelve la MISMA lista reordenada de más a menos parecido.
+    Nunca descarta candidatos, solo cambia su orden.
+
+    Si no hay GEMINI_API_KEY, hay menos de 2 candidatos, o Gemini falla por
+    cualquier motivo, devuelve la lista ORIGINAL sin cambios: este filtro nunca
+    debe romper la búsqueda.
+    """
+    if not GEMINI_API_KEY or not productos or len(productos) < 2:
+        return productos
+
+    lineas = []
+    for idx, p in enumerate(productos):
+        precio_txt = f" — {p.get('precio_texto')}" if p.get("precio_texto") else ""
+        lineas.append(f"{idx}: {p.get('titulo', '')}{precio_txt}")
+    lista_titulos = "\n".join(lineas)
+
+    prompt = f"""Eres un experto en identificación visual de productos para ecommerce. La imagen adjunta es la foto de referencia del producto que el usuario quiere encontrar.
+
+A continuación hay una lista de candidatos encontrados en tiendas (solo se conoce su título e índice, no su imagen):
+{lista_titulos}
+
+Tu tarea: comparar lo que se ve en la foto de referencia con cada título y ordenar TODOS los candidatos de más a menos parecido al producto de la foto (misma marca, modelo y generación primero; variantes, accesorios u otras categorías al final). Debes incluir todos los índices, sin excluir ninguno.
+
+Responde SOLO con JSON válido, sin markdown, con esta estructura exacta:
+{{"orden": [TODOS los índices ordenados de MÁS parecido a MENOS parecido]}}
+
+Ejemplo: {{"orden": [2, 0, 1, 3]}}"""
+
+    try:
+        img = Image.open(BytesIO(image_bytes)).convert("RGB")
+        respuesta, _ = _gemini_generate(prompt, imagen_pil=img)
+        data = extraer_json_respuesta(respuesta)
+        if not data or not isinstance(data, dict):
+            return productos
+        orden = data.get("orden")
+        if not isinstance(orden, list) or not orden:
+            return productos
+
+        reordenados = [productos[i] for i in orden
+                       if isinstance(i, int) and 0 <= i < len(productos)]
+        if not reordenados:
+            return productos
+
+        # Candidatos que Gemini no mencionó en "orden": se agregan al final
+        # (nunca se descartan) por si el JSON viene incompleto.
+        mencionados = set(orden)
+        faltantes = [p for i, p in enumerate(productos) if i not in mencionados]
+        return reordenados + faltantes
+    except Exception:
+        return productos
+
+
+# ==============================================================================
 # ENTRADA PRINCIPAL
 # ==============================================================================
 
@@ -186,8 +257,11 @@ def buscar_por_imagen_lens(image_bytes: bytes, solo_chile: bool = True,
     Devuelve un dict:
       ok               -> True si la búsqueda se completó
       error            -> mensaje si algo falló (None si todo bien)
-      productos        -> lista ordenada (más barato primero) de:
-                          {titulo, tienda, precio_texto, precio_num, link, imagen, es_chileno}
+      productos        -> lista de {titulo, tienda, precio_texto, precio_num, link,
+                          imagen, es_chileno}. Ordenada por precio (más barato
+                          primero); si USAR_FILTRO_GEMINI está activo y Gemini
+                          responde bien, queda ordenada por similitud visual
+                          con la foto en su lugar.
       resumen_precios  -> {min, max, mediana, cantidad} en pesos
       url_imagen       -> URL temporal de la foto subida (para depurar)
     """
@@ -218,6 +292,9 @@ def buscar_por_imagen_lens(image_bytes: bytes, solo_chile: bool = True,
     items = _filtrar_outliers(items)
     # Orden: más barato primero; los sin precio quedan al final
     items.sort(key=lambda x: x["precio_num"] if x["precio_num"] is not None else float("inf"))
+
+    if USAR_FILTRO_GEMINI:
+        items = filtrar_por_similitud_gemini(image_bytes, items)
 
     out["productos"] = items[:max_resultados]
     out["resumen_precios"] = _resumen_precios(items)

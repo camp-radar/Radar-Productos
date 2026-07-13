@@ -72,8 +72,8 @@ def render_grid_ml(items, resultado=None):
     st.markdown('<div class="grid-title">🛒 Mejores precios encontrados</div>',
                 unsafe_allow_html=True)
     _render_fila_productos(top[:5], "top")
-
-
+    
+    
 def render_producto_exacto(resultado_lens):
     """Muestra el producto EXACTO encontrado vía Google Lens (módulo lens.py).
 
