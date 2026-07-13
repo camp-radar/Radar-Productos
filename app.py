@@ -75,6 +75,7 @@ _DEFAULTS = {
     "radar_hash_img": None,
     "radar_modulo4": None,
     "radar_lens": None,
+    "imagen_referente_bytes": None,
 }
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
@@ -397,6 +398,24 @@ if seccion == "radar":
             resultado = buscar_producto(query.strip(), contexto={}, max_resultados=5)
         st.session_state["radar_resultado"] = resultado
         st.session_state["radar_query"] = query.strip()
+
+    # --- Relanzar búsqueda de producto exacto con una imagen de referencia ---
+    # (viene del botón "Buscar con esta imagen" en una tarjeta de la sección
+    # de producto exacto: usa la miniatura del candidato, que suele ser de
+    # catálogo, en vez de la foto original del usuario). No toca la detección
+    # de identidad ni la búsqueda de productos similares: solo refresca
+    # radar_lens con el nuevo resultado de Lens.
+    imagen_referente = st.session_state.get("imagen_referente_bytes")
+    if imagen_referente:
+        st.session_state["imagen_referente_bytes"] = None
+        st.info("🔍 Buscando con la imagen seleccionada...")
+        try:
+            with st.spinner("Buscando el producto exacto con la imagen seleccionada..."):
+                resultado_lens = lens.buscar_por_imagen_lens(imagen_referente)
+            st.session_state["radar_lens"] = resultado_lens
+        except Exception as e:
+            st.session_state["radar_lens"] = None
+            st.error(f"No se pudo relanzar la búsqueda con esa imagen: {e}")
 
     # --- Lógica búsqueda por imagen ---
     if imagen_subida is not None:

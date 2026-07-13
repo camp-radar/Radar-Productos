@@ -1,9 +1,11 @@
 """
 ui.py — Componentes de render: tarjetas de producto, grilla, identidad y campaña.
 """
+from io import BytesIO
+
 import streamlit as st
 
-from utils import formatear_pesos, resumir_texto
+from utils import formatear_pesos, resumir_texto, descargar_imagen
 from busqueda import generar_link_tienda
 from guardados import cargar_guardados, guardar_producto
 
@@ -63,6 +65,49 @@ def _render_fila_productos(items, key_prefix, link_directo=False):
                             st.rerun()
 
 
+def _render_fila_productos_lens(items, key_prefix):
+    """Como _render_fila_productos, pero solo para la sección de "producto
+    exacto": además del botón Guardar, ofrece "Buscar con esta imagen" para
+    relanzar la búsqueda usando la miniatura del candidato (útil cuando la
+    foto original es de mala calidad pero un candidato de catálogo sí es el
+    producto correcto). No se usa en la grilla de "productos similares"."""
+    guardados = cargar_guardados()
+    claves_guardadas = {(g.get("link", ""), g.get("precio")) for g in guardados}
+
+    por_fila = 5
+    for inicio in range(0, len(items), por_fila):
+        fila = items[inicio:inicio + por_fila]
+        cols = st.columns(por_fila, gap="small")
+        for idx, item in enumerate(fila):
+            with cols[idx]:
+                st.markdown(_card_producto_html(item, link_directo=True), unsafe_allow_html=True)
+                clave = (item.get("link", ""), item.get("precio"))
+                item_idx = inicio + idx
+                if clave in claves_guardadas:
+                    st.button("✓ Guardado", key=f"{key_prefix}_g_{item_idx}",
+                              disabled=True, use_container_width=True)
+                else:
+                    if st.button("💾 Guardar", key=f"{key_prefix}_s_{item_idx}",
+                                 use_container_width=True):
+                        if guardar_producto(item):
+                            st.toast("Producto guardado ✓")
+                            st.rerun()
+
+                if item.get("imagen"):
+                    if st.button("🔍 Buscar con esta imagen", key=f"{key_prefix}_img_{item_idx}",
+                                 use_container_width=True):
+                        try:
+                            img_pil = descargar_imagen(item["imagen"])
+                            if img_pil is None:
+                                raise RuntimeError("no se pudo descargar la imagen del candidato.")
+                            buf = BytesIO()
+                            img_pil.save(buf, format="JPEG", quality=90)
+                            st.session_state["imagen_referente_bytes"] = buf.getvalue()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"No se pudo usar esta imagen para buscar: {e}")
+
+
 def render_grid_ml(items, resultado=None):
     if not items:
         st.info("No se encontraron precios para esta búsqueda. Intenta con otro término.")
@@ -107,7 +152,7 @@ def render_producto_exacto(resultado_lens):
 </div>
 """, unsafe_allow_html=True)
 
-    _render_fila_productos(items, "lens", link_directo=True)
+    _render_fila_productos_lens(items, "lens")
 
 
 def render_identidad(det):
