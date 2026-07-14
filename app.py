@@ -683,7 +683,7 @@ elif seccion == "guardados":
                 costo_base = precio_compra + (precio_compra * iva / 100) + costo_envio
                 precio_sugerido = costo_base + (costo_base * margen / 100)
                 ganancia_pesos_calc = precio_sugerido - costo_base
-                ganancia_pct_calc = (ganancia_pesos_calc / precio_sugerido * 100) if precio_sugerido else 0.0
+                ganancia_pct_calc = (ganancia_pesos_calc / costo_base * 100) if costo_base else 0.0
 
                 mc1, mc2 = st.columns(2, gap="medium")
                 with mc1:
