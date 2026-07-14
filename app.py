@@ -12,7 +12,7 @@ import streamlit as st
 from config import ZONAS_CHILE, OBJETIVOS_META
 from utils import formatear_pesos
 from guardados import (cargar_guardados, _escribir_guardados, eliminar_guardado,
-                       guardar_producto, selector_guardado)
+                       guardar_producto, selector_guardado, guardar_analisis)
 from busqueda import buscar_producto
 from vision import (image_input_pipeline, detectar_identidad_imagen,
                     verificar_y_enriquecer)
@@ -77,6 +77,7 @@ _DEFAULTS = {
     "radar_modulo4": None,
     "radar_lens": None,
     "imagen_referente_bytes": None,
+    "guardado_en_analisis": None,
 }
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
@@ -577,21 +578,142 @@ elif seccion == "guardados":
                 _escribir_guardados([])
                 st.rerun()
 
+        # --- Galería de tarjetas ---
         por_fila = 4
         for inicio in range(0, len(guardados), por_fila):
             fila = guardados[inicio:inicio + por_fila]
             cols = st.columns(por_fila, gap="small")
             for idx, item in enumerate(fila):
                 with cols[idx]:
-                    st.markdown(_card_producto_html(item), unsafe_allow_html=True)
+                    item_idx = inicio + idx
+                    clave = (item.get("link", ""), item.get("precio"))
+
+                    st.markdown(_card_producto_html(item, link_directo=True), unsafe_allow_html=True)
                     fecha = item.get("_guardado_en", "")
                     if fecha:
                         st.markdown(f'<div style="font-size:0.7rem;color:#9ca3af;'
-                                    f'text-align:center;margin:-0.3rem 0 0.3rem;">Guardado {fecha}</div>',
+                                    f'text-align:center;margin:-0.3rem 0 0.2rem;">Guardado {fecha}</div>',
                                     unsafe_allow_html=True)
-                    item_idx = inicio + idx
-                    if st.button("🗑️ Eliminar", key=f"del_{item_idx}", use_container_width=True):
-                        eliminar_guardado(item.get("link", ""), item.get("precio"))
+
+                    col_del, col_calc = st.columns(2, gap="small")
+                    with col_del:
+                        if st.button("🗑️", key=f"gsec_del_{item_idx}", help="Eliminar",
+                                     use_container_width=True):
+                            eliminar_guardado(item.get("link", ""), item.get("precio"))
+                            if st.session_state.get("guardado_en_analisis") == clave:
+                                st.session_state["guardado_en_analisis"] = None
+                            st.rerun()
+                    with col_calc:
+                        if st.button("🧮", key=f"gsec_calc_{item_idx}", help="Analizar rentabilidad",
+                                     use_container_width=True):
+                            st.session_state["guardado_en_analisis"] = clave
+                            st.rerun()
+
+                    # --- Resumen compacto del análisis guardado (si existe) ---
+                    precio_sugerido_g = item.get("precio_sugerido")
+                    if precio_sugerido_g:
+                        ganancia_g = item.get("ganancia_pesos") or 0
+                        ganancia_pct_g = item.get("ganancia_pct")
+                        pct_txt = f" ({ganancia_pct_g:.1f}%)" if ganancia_pct_g is not None else ""
+                        precio_ref_g = item.get("precio_referencia_manual") or item.get("precio")
+                        competitivo = bool(precio_ref_g) and precio_sugerido_g <= precio_ref_g
+                        icono = "✅" if competitivo else "⚠️"
+                        st.markdown(
+                            f'<div class="log-note" style="text-align:center;margin-top:0.35rem;">'
+                            f'{icono} 💰 Sugerido: {formatear_pesos(precio_sugerido_g)} · '
+                            f'Ganancia: {formatear_pesos(ganancia_g)}{pct_txt}</div>',
+                            unsafe_allow_html=True)
+
+        # --- Calculadora de rentabilidad del producto en análisis (si hay uno) ---
+        item_en_analisis = st.session_state.get("guardado_en_analisis")
+        if item_en_analisis:
+            link_sel, precio_sel = item_en_analisis
+            producto_sel = next((g for g in guardados if g.get("link", "") == link_sel
+                                 and g.get("precio") == precio_sel), None)
+            if producto_sel is None:
+                st.session_state["guardado_en_analisis"] = None
+            else:
+                st.markdown("---")
+                st.markdown(f'<div class="sec-title">🧮 Analizando: {_esc(producto_sel.get("titulo", ""))}</div>',
+                            unsafe_allow_html=True)
+
+                key_suf = str(guardados.index(producto_sel))
+                precio_producto = producto_sel.get("precio")
+
+                usar_manual = st.checkbox(
+                    "Ingresar precio de referencia manual",
+                    value=not bool(precio_producto) or bool(producto_sel.get("precio_referencia_manual")),
+                    key=f"gcalc_manual_{key_suf}")
+
+                if usar_manual:
+                    precio_referencia = st.number_input(
+                        "Precio de referencia (manual)", min_value=0.0,
+                        value=float(producto_sel.get("precio_referencia_manual") or 0.0),
+                        step=100.0, key=f"gcalc_ref_{key_suf}")
+                else:
+                    precio_referencia = float(precio_producto or 0)
+                    st.caption(f"Precio de referencia: {formatear_pesos(precio_referencia)} (precio del producto)")
+
+                gc1, gc2 = st.columns(2, gap="medium")
+                with gc1:
+                    precio_compra = st.number_input(
+                        "Precio de compra (proveedor)", min_value=0.0,
+                        value=float(producto_sel.get("precio_compra") or 0.0),
+                        step=100.0, key=f"gcalc_compra_{key_suf}")
+                    iva = st.number_input(
+                        "IVA %", min_value=0.0, value=float(producto_sel.get("iva_pct") or 19.0),
+                        step=0.5, key=f"gcalc_iva_{key_suf}")
+                with gc2:
+                    margen = st.number_input(
+                        "Margen de ganancia %", min_value=0.0,
+                        value=float(producto_sel.get("margen_pct") or 20.0),
+                        step=1.0, key=f"gcalc_margen_{key_suf}")
+                    costo_envio = st.number_input(
+                        "Costo de envío (opcional)", min_value=0.0,
+                        value=float(producto_sel.get("costo_envio") or 0.0),
+                        step=100.0, key=f"gcalc_envio_{key_suf}")
+
+                costo_base = precio_compra + (precio_compra * iva / 100) + costo_envio
+                precio_sugerido = costo_base + (costo_base * margen / 100)
+                ganancia_pesos_calc = precio_sugerido - costo_base
+                ganancia_pct_calc = (ganancia_pesos_calc / precio_sugerido * 100) if precio_sugerido else 0.0
+
+                mc1, mc2 = st.columns(2, gap="medium")
+                with mc1:
+                    st.metric("Precio de venta sugerido", formatear_pesos(precio_sugerido))
+                with mc2:
+                    st.metric("Ganancia por unidad", formatear_pesos(ganancia_pesos_calc),
+                             delta=f"{margen:.1f}% margen")
+
+                if precio_sugerido <= precio_referencia:
+                    st.success(f"✅ Tu precio sugerido ({formatear_pesos(precio_sugerido)}) está "
+                              f"por DEBAJO del mercado ({formatear_pesos(precio_referencia)}). Competitivo.")
+                else:
+                    st.warning(f"⚠️ Tu precio sugerido ({formatear_pesos(precio_sugerido)}) está "
+                              f"por ENCIMA del mercado ({formatear_pesos(precio_referencia)}). "
+                              f"Podrías tener que bajar el margen para competir.")
+
+                bg1, bg2 = st.columns(2, gap="medium")
+                with bg1:
+                    if st.button("💾 Guardar análisis", key=f"gcalc_guardar_{key_suf}",
+                                 use_container_width=True):
+                        datos_analisis = {
+                            "precio_compra": precio_compra,
+                            "precio_referencia_manual": precio_referencia if usar_manual else "",
+                            "iva_pct": iva,
+                            "margen_pct": margen,
+                            "costo_envio": costo_envio,
+                            "precio_sugerido": precio_sugerido,
+                            "ganancia_pesos": ganancia_pesos_calc,
+                            "ganancia_pct": round(ganancia_pct_calc, 2),
+                        }
+                        if guardar_analisis(link_sel, precio_sel, datos_analisis):
+                            st.success("Análisis guardado ✓")
+                            st.session_state["guardado_en_analisis"] = None
+                            st.rerun()
+                with bg2:
+                    if st.button("Cerrar", key=f"gcalc_cerrar_{key_suf}", use_container_width=True):
+                        st.session_state["guardado_en_analisis"] = None
                         st.rerun()
 
 # ==============================================================================

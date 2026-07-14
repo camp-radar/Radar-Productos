@@ -19,7 +19,19 @@ from google.oauth2 import service_account
 
 from config import GOOGLE_VISION_JSON, GOOGLE_VISION_JSON_CONTENT, GOOGLE_SHEET_ID
 
-_COLUMNAS = ["titulo", "fuente", "precio", "link", "imagen", "categoria", "_guardado_en"]
+_COLUMNAS_PRODUCTO = ["titulo", "fuente", "precio", "link", "imagen", "categoria", "_guardado_en"]
+# Columnas del análisis de rentabilidad (calculadora de la sección Guardados).
+# Quedan vacías para los productos que todavía no se analizaron.
+_COLUMNAS_ANALISIS = ["precio_compra", "precio_referencia_manual", "iva_pct", "margen_pct",
+                      "costo_envio", "precio_sugerido", "ganancia_pesos", "ganancia_pct",
+                      "analisis_guardado_en"]
+_COLUMNAS = _COLUMNAS_PRODUCTO + _COLUMNAS_ANALISIS
+
+# Columnas numéricas: se convierten con _a_numero al leer (None si vienen vacías).
+_COLUMNAS_NUMERICAS = ["precio", "precio_compra", "precio_referencia_manual", "iva_pct",
+                       "margen_pct", "costo_envio", "precio_sugerido", "ganancia_pesos",
+                       "ganancia_pct"]
+
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 
@@ -73,7 +85,9 @@ def _a_numero(valor):
 
 def _fila_a_dict(fila: dict) -> dict:
     item = dict(fila)
-    item["precio"] = _a_numero(item.get("precio"))
+    for col in _COLUMNAS_NUMERICAS:
+        if col in item:
+            item[col] = _a_numero(item.get(col))
     return item
 
 
@@ -126,6 +140,30 @@ def eliminar_guardado(link: str, precio) -> bool:
     if len(nueva) != len(lista):
         return _escribir_guardados(nueva)
     return False
+
+
+def guardar_analisis(link: str, precio, datos_analisis: dict) -> bool:
+    """Actualiza SOLO las columnas del análisis de rentabilidad (_COLUMNAS_ANALISIS)
+    de un producto ya guardado, identificado por link+precio. No crea una fila
+    nueva: busca la fila existente y la actualiza. datos_analisis puede traer
+    cualquier subconjunto de las columnas de análisis; el resto queda igual."""
+    try:
+        lista = cargar_guardados()
+        encontrado = False
+        for g in lista:
+            if g.get("link", "") == link and g.get("precio") == precio:
+                for col in _COLUMNAS_ANALISIS:
+                    if col in datos_analisis:
+                        g[col] = datos_analisis[col]
+                g["analisis_guardado_en"] = _t.strftime("%Y-%m-%d %H:%M")
+                encontrado = True
+                break
+        if not encontrado:
+            return False
+        return _escribir_guardados(lista)
+    except Exception as e:
+        st.error(f"No se pudo guardar el análisis: {e}")
+        return False
 
 
 def selector_guardado(key_prefix, label="O elige un producto guardado:"):
