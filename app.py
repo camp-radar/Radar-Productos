@@ -341,9 +341,9 @@ st.markdown("""
 # ==============================================================================
 SECCIONES = [
     ("radar", "🔎  Radar"),
-    ("guardados", "💾  Guardados"),
     ("logistica", "🚚  Logística"),
     ("campanas", "🎯  Laboratorio de Campañas"),
+    ("guardados", "💾  Guardados"),
 ]
 
 with st.sidebar:
@@ -588,41 +588,48 @@ elif seccion == "guardados":
                     item_idx = inicio + idx
                     clave = (item.get("link", ""), item.get("precio"))
 
-                    st.markdown(_card_producto_html(item, link_directo=True), unsafe_allow_html=True)
-                    fecha = item.get("_guardado_en", "")
-                    if fecha:
-                        st.markdown(f'<div style="font-size:0.7rem;color:#9ca3af;'
-                                    f'text-align:center;margin:-0.3rem 0 0.2rem;">Guardado {fecha}</div>',
-                                    unsafe_allow_html=True)
+                    with st.container(border=True):
+                        st.markdown(_card_producto_html(item, link_directo=True), unsafe_allow_html=True)
+                        fecha = item.get("_guardado_en", "")
+                        if fecha:
+                            st.markdown(f'<div style="font-size:0.7rem;color:#9ca3af;'
+                                        f'text-align:center;margin:-0.3rem 0 0.2rem;">Guardado {fecha}</div>',
+                                        unsafe_allow_html=True)
 
-                    col_del, col_calc = st.columns(2, gap="small")
-                    with col_del:
-                        if st.button("🗑️", key=f"gsec_del_{item_idx}", help="Eliminar",
-                                     use_container_width=True):
-                            eliminar_guardado(item.get("link", ""), item.get("precio"))
-                            if st.session_state.get("guardado_en_analisis") == clave:
-                                st.session_state["guardado_en_analisis"] = None
-                            st.rerun()
-                    with col_calc:
-                        if st.button("🧮", key=f"gsec_calc_{item_idx}", help="Analizar rentabilidad",
-                                     use_container_width=True):
-                            st.session_state["guardado_en_analisis"] = clave
-                            st.rerun()
+                        col_del, col_calc = st.columns(2, gap="small")
+                        with col_del:
+                            if st.button("🗑️", key=f"gsec_del_{item_idx}", help="Eliminar",
+                                         use_container_width=True):
+                                eliminar_guardado(item.get("link", ""), item.get("precio"))
+                                if st.session_state.get("guardado_en_analisis") == clave:
+                                    st.session_state["guardado_en_analisis"] = None
+                                st.rerun()
+                        with col_calc:
+                            if st.button("🧮", key=f"gsec_calc_{item_idx}", help="Analizar rentabilidad",
+                                         use_container_width=True):
+                                st.session_state["guardado_en_analisis"] = clave
+                                st.rerun()
 
-                    # --- Resumen compacto del análisis guardado (si existe) ---
-                    precio_sugerido_g = item.get("precio_sugerido")
-                    if precio_sugerido_g:
-                        ganancia_g = item.get("ganancia_pesos") or 0
-                        ganancia_pct_g = item.get("ganancia_pct")
-                        pct_txt = f" ({ganancia_pct_g:.1f}%)" if ganancia_pct_g is not None else ""
-                        precio_ref_g = item.get("precio_referencia_manual") or item.get("precio")
-                        competitivo = bool(precio_ref_g) and precio_sugerido_g <= precio_ref_g
-                        icono = "✅" if competitivo else "⚠️"
-                        st.markdown(
-                            f'<div class="log-note" style="text-align:center;margin-top:0.35rem;">'
-                            f'{icono} 💰 Sugerido: {formatear_pesos(precio_sugerido_g)} · '
-                            f'Ganancia: {formatear_pesos(ganancia_g)}{pct_txt}</div>',
-                            unsafe_allow_html=True)
+                        # --- Resumen compacto del análisis guardado (si existe) ---
+                        precio_sugerido_g = item.get("precio_sugerido")
+                        if precio_sugerido_g:
+                            ganancia_g = item.get("ganancia_pesos") or 0
+                            ganancia_pct_g = item.get("ganancia_pct")
+                            pct_txt = f" ({ganancia_pct_g:.1f}%)" if ganancia_pct_g is not None else ""
+                            precio_ref_g = item.get("precio_referencia_manual") or item.get("precio")
+                            competitivo = bool(precio_ref_g) and precio_sugerido_g <= precio_ref_g
+                            icono = "✅" if competitivo else "⚠️"
+                            texto_estado = "Competitivo" if competitivo else "Sobre el mercado"
+                            st.markdown(
+                                f'<div style="font-size:0.76rem;color:#475569;line-height:1.5;'
+                                f'background:#f8fafc;border-radius:8px;padding:0.5rem 0.65rem;'
+                                f'margin-top:0.4rem;">'
+                                f'<div>📌 Referencia: <b>{formatear_pesos(precio_ref_g)}</b></div>'
+                                f'<div>💰 Sugerido: <b>{formatear_pesos(precio_sugerido_g)}</b></div>'
+                                f'<div>📈 Ganancia: <b>{formatear_pesos(ganancia_g)}</b>{pct_txt}</div>'
+                                f'<div>{icono} {texto_estado}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True)
 
         # --- Calculadora de rentabilidad del producto en análisis (si hay uno) ---
         item_en_analisis = st.session_state.get("guardado_en_analisis")
