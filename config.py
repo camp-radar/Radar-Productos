@@ -48,6 +48,9 @@ for _k in ["GEMINI_API_KEY", "GROQ_API_KEY", "SERPER_API_KEY", "GOOGLE_VISION_AP
 
 GEMINI_API_KEY = _secreto("GEMINI_API_KEY")
 GOOGLE_VISION_API_KEY = _secreto("GOOGLE_VISION_API_KEY")
+SERPAPI_KEY = _secreto("SERPAPI_KEY")
+IMGBB_API_KEY = _secreto("IMGBB_API_KEY")
+GOOGLE_SHEET_ID = _secreto("GOOGLE_SHEET_ID", "1CtbBE7H1EGgTTDnYNZxHoWKGTxTrcGyXASyCIcPDxIE")
 
 # --- Credenciales JSON de Google Vision (cuenta de servicio) ---
 # En tu PC: busca el archivo .json en la carpeta.

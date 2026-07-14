@@ -340,6 +340,7 @@ st.markdown("""
 # ==============================================================================
 SECCIONES = [
     ("radar", "🔎  Radar"),
+    ("guardados", "💾  Guardados"),
     ("logistica", "🚚  Logística"),
     ("campanas", "🎯  Laboratorio de Campañas"),
 ]

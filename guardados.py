@@ -1,33 +1,84 @@
 """
-guardados.py — Persistencia local de productos guardados (guardados.json).
+guardados.py — Persistencia de productos guardados en Google Sheets.
+
+Antes se guardaba en un archivo local (guardados.json), pero en Streamlit
+Cloud el disco se borra al reiniciar la app. Ahora se usa una planilla de
+Google Sheets, autenticada con la misma cuenta de servicio que usa Vision
+(GOOGLE_VISION_JSON en config.py).
+
+Los nombres y firmas de las funciones públicas se mantienen exactamente
+iguales a los de la versión anterior para no romper app.py ni ui.py.
 """
-import json
-from pathlib import Path as _Path
+import time as _t
 
 import streamlit as st
+import gspread
+from google.oauth2 import service_account
 
-_ARCHIVO_GUARDADOS = _Path(__file__).parent / "guardados.json"
+from config import GOOGLE_VISION_JSON, GOOGLE_SHEET_ID
+
+_COLUMNAS = ["titulo", "fuente", "precio", "link", "imagen", "categoria", "_guardado_en"]
+_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+
+@st.cache_resource(show_spinner=False)
+def _obtener_hoja():
+    """Abre la planilla (cuenta de servicio de Vision + GOOGLE_SHEET_ID) y
+    devuelve la primera hoja. La conexión queda cacheada entre llamadas."""
+    creds = service_account.Credentials.from_service_account_file(
+        GOOGLE_VISION_JSON, scopes=_SCOPES)
+    cliente = gspread.authorize(creds)
+    hoja = cliente.open_by_key(GOOGLE_SHEET_ID).sheet1
+    if not hoja.get_all_values():
+        hoja.append_row(_COLUMNAS)
+    return hoja
+
+
+def _a_numero(valor):
+    """Convierte el precio a número cuando se pueda (int si es un entero
+    exacto, para no romper el formato "$1.234" que usa el resto de la app)."""
+    if valor is None or valor == "":
+        return None
+    if isinstance(valor, int):
+        return valor
+    try:
+        num = float(valor)
+    except (TypeError, ValueError):
+        return None
+    return int(num) if num == int(num) else num
+
+
+def _fila_a_dict(fila: dict) -> dict:
+    item = dict(fila)
+    item["precio"] = _a_numero(item.get("precio"))
+    return item
 
 
 def cargar_guardados() -> list:
-    """Lee la lista de productos guardados desde el archivo local."""
+    """Lee la lista de productos guardados desde Google Sheets (más reciente primero)."""
     try:
-        if _ARCHIVO_GUARDADOS.exists():
-            with open(_ARCHIVO_GUARDADOS, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return data if isinstance(data, list) else []
-    except Exception:
-        pass
-    return []
+        hoja = _obtener_hoja()
+        filas = hoja.get_all_records()
+        return [_fila_a_dict(f) for f in filas]
+    except Exception as e:
+        st.error(f"No se pudo leer Google Sheets: {e}")
+        return []
 
 
 def _escribir_guardados(lista: list) -> bool:
-    """Escribe la lista de guardados al archivo local."""
+    """Reescribe toda la hoja con la lista dada (borra todo y vuelve a
+    escribir encabezado + filas, en el mismo orden que trae la lista)."""
     try:
-        with open(_ARCHIVO_GUARDADOS, "w", encoding="utf-8") as f:
-            json.dump(lista, f, ensure_ascii=False, indent=2)
+        hoja = _obtener_hoja()
+        hoja.clear()
+        hoja.append_row(_COLUMNAS)
+        if lista:
+            filas = [[item.get(c, "") if item.get(c) is not None else ""
+                      for c in _COLUMNAS] for item in lista]
+            hoja.append_rows(filas)
         return True
-    except Exception:
+    except Exception as e:
+        st.error(f"No se pudo guardar en Google Sheets: {e}")
         return False
 
 
@@ -38,13 +89,11 @@ def guardar_producto(item: dict) -> bool:
     for g in lista:
         if (g.get("link", ""), g.get("precio")) == clave_nueva:
             return False  # ya estaba guardado
-    import time as _t
     item_guardar = dict(item)
     item_guardar["_guardado_en"] = _t.strftime("%Y-%m-%d %H:%M")
     lista.insert(0, item_guardar)  # el más reciente primero
     lista = lista[:50]  # límite de 50 guardados (descarta los más antiguos)
-    _escribir_guardados(lista)
-    return True
+    return _escribir_guardados(lista)
 
 
 def eliminar_guardado(link: str, precio) -> bool:
@@ -52,8 +101,7 @@ def eliminar_guardado(link: str, precio) -> bool:
     lista = cargar_guardados()
     nueva = [g for g in lista if not (g.get("link", "") == link and g.get("precio") == precio)]
     if len(nueva) != len(lista):
-        _escribir_guardados(nueva)
-        return True
+        return _escribir_guardados(nueva)
     return False
 
 
