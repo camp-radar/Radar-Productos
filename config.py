@@ -83,6 +83,13 @@ if not GOOGLE_VISION_JSON:
 if not GOOGLE_VISION_JSON:
     GOOGLE_VISION_JSON = _secreto("GOOGLE_APPLICATION_CREDENTIALS")
 
+# Contenido crudo del JSON de la cuenta de servicio, tal cual viene del secret.
+# Lo exponemos aparte (además del truco del archivo temporal de arriba) para
+# que otros módulos puedan construir credenciales en memoria con
+# Credentials.from_service_account_info() cuando no exista un archivo real en
+# disco (por ejemplo gspread en Streamlit Cloud).
+GOOGLE_VISION_JSON_CONTENT = _secreto("GOOGLE_VISION_JSON_CONTENT")
+
 VISION_DISPONIBLE = bool(GOOGLE_VISION_JSON or GOOGLE_VISION_API_KEY)
 
 # Vertex desactivado por defecto (problema SSL gRPC en Windows con timeout de 600s)

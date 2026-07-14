@@ -9,24 +9,47 @@ Google Sheets, autenticada con la misma cuenta de servicio que usa Vision
 Los nombres y firmas de las funciones públicas se mantienen exactamente
 iguales a los de la versión anterior para no romper app.py ni ui.py.
 """
+import json
+import os
 import time as _t
 
 import streamlit as st
 import gspread
 from google.oauth2 import service_account
 
-from config import GOOGLE_VISION_JSON, GOOGLE_SHEET_ID
+from config import GOOGLE_VISION_JSON, GOOGLE_VISION_JSON_CONTENT, GOOGLE_SHEET_ID
 
 _COLUMNAS = ["titulo", "fuente", "precio", "link", "imagen", "categoria", "_guardado_en"]
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+
+def _credenciales_sheets():
+    """Construye las credenciales de la cuenta de servicio en memoria (nunca
+    le pasa una ruta de archivo a gspread), igual que necesita funcionar tanto
+    en local como en Streamlit Cloud:
+    - En local: si existe el archivo GOOGLE_VISION_JSON, se lee su contenido.
+    - En la nube: no hay archivo en disco, así que se usa directamente el
+      contenido del secret GOOGLE_VISION_JSON_CONTENT (mismo secret que usa
+      config.py para reconstruir las credenciales de Vision)."""
+    info = None
+    if GOOGLE_VISION_JSON and os.path.exists(GOOGLE_VISION_JSON):
+        with open(GOOGLE_VISION_JSON, "r", encoding="utf-8") as f:
+            info = json.load(f)
+    elif GOOGLE_VISION_JSON_CONTENT:
+        info = json.loads(GOOGLE_VISION_JSON_CONTENT)
+
+    if not info:
+        raise RuntimeError(
+            "No hay credenciales de Google disponibles (ni archivo local "
+            "GOOGLE_VISION_JSON ni secret GOOGLE_VISION_JSON_CONTENT).")
+    return service_account.Credentials.from_service_account_info(info, scopes=_SCOPES)
 
 
 @st.cache_resource(show_spinner=False)
 def _obtener_hoja():
     """Abre la planilla (cuenta de servicio de Vision + GOOGLE_SHEET_ID) y
     devuelve la primera hoja. La conexión queda cacheada entre llamadas."""
-    creds = service_account.Credentials.from_service_account_file(
-        GOOGLE_VISION_JSON, scopes=_SCOPES)
+    creds = _credenciales_sheets()
     cliente = gspread.authorize(creds)
     hoja = cliente.open_by_key(GOOGLE_SHEET_ID).sheet1
     if not hoja.get_all_values():
