@@ -65,7 +65,7 @@ def _obtener_hoja():
     cliente = gspread.authorize(creds)
     hoja = cliente.open_by_key(GOOGLE_SHEET_ID).sheet1
     if not hoja.get_all_values():
-        hoja.append_row(_COLUMNAS)
+        hoja.append_row(_COLUMNAS, value_input_option="RAW")
     return hoja
 
 
@@ -92,10 +92,17 @@ def _fila_a_dict(fila: dict) -> dict:
 
 
 def cargar_guardados() -> list:
-    """Lee la lista de productos guardados desde Google Sheets (más reciente primero)."""
+    """Lee la lista de productos guardados desde Google Sheets (más reciente primero).
+
+    Pide UNFORMATTED_VALUE explícitamente: si una celda quedó con formato de
+    Porcentaje o de miles (por ejemplo por un formato de columna heredado de
+    antes), FORMATTED_VALUE (el default de gspread) devuelve el número ya
+    multiplicado/formateado para mostrar, no el valor real guardado. Con
+    UNFORMATTED_VALUE siempre se obtiene el número crudo, sin importar el
+    formato de la celda."""
     try:
         hoja = _obtener_hoja()
-        filas = hoja.get_all_records()
+        filas = hoja.get_all_records(value_render_option="UNFORMATTED_VALUE")
         return [_fila_a_dict(f) for f in filas]
     except Exception as e:
         st.error(f"No se pudo leer Google Sheets: {e}")
@@ -104,15 +111,19 @@ def cargar_guardados() -> list:
 
 def _escribir_guardados(lista: list) -> bool:
     """Reescribe toda la hoja con la lista dada (borra todo y vuelve a
-    escribir encabezado + filas, en el mismo orden que trae la lista)."""
+    escribir encabezado + filas, en el mismo orden que trae la lista).
+
+    Usa value_input_option="RAW" explícitamente: así Sheets guarda los números
+    tal cual, sin intentar "interpretarlos" como haría con una entrada de
+    usuario (que puede aplicar formato de miles/porcentaje según la columna)."""
     try:
         hoja = _obtener_hoja()
         hoja.clear()
-        hoja.append_row(_COLUMNAS)
+        hoja.append_row(_COLUMNAS, value_input_option="RAW")
         if lista:
             filas = [[item.get(c, "") if item.get(c) is not None else ""
                       for c in _COLUMNAS] for item in lista]
-            hoja.append_rows(filas)
+            hoja.append_rows(filas, value_input_option="RAW")
         return True
     except Exception as e:
         st.error(f"No se pudo guardar en Google Sheets: {e}")
