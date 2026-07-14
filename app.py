@@ -509,20 +509,9 @@ if seccion == "radar":
                 if not con_precio:
                     st.info("No hay precios disponibles en los resultados de Lens para comparar.")
                 else:
-                    opciones = {
-                        f"{p.get('tienda') or 'Tienda'} — {formatear_pesos(p['precio_num'])}": p["precio_num"]
-                        for p in con_precio
-                    }
-                    opcion_manual = "✏️ Ingresar manualmente"
-                    etiqueta_sel = st.selectbox("Precio de referencia (precio de mercado)",
-                                               [opcion_manual] + list(opciones.keys()),
-                                               key="calc_precio_ref")
-                    if etiqueta_sel == opcion_manual:
-                        precio_referencia = st.number_input("Precio de referencia (manual)",
-                                                            min_value=0.0, value=0.0, step=100.0,
-                                                            key="calc_precio_ref_manual")
-                    else:
-                        precio_referencia = opciones[etiqueta_sel]
+                    precio_referencia = st.number_input("Precio de referencia (precio de mercado)",
+                                                        min_value=0.0, value=0.0, step=100.0,
+                                                        key="calc_precio_ref")
 
                     cc1, cc2 = st.columns(2, gap="medium")
                     with cc1:
